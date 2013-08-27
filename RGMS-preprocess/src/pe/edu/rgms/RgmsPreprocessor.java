@@ -5,6 +5,9 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -62,11 +65,11 @@ public class RgmsPreprocessor {
 		JOptionPane.showMessageDialog(null, "The system is going to start.");
 	}
 
-	public void createFolder (File orignalFile) throws IOException {
-		if (!orignalFile.isDirectory())
+	public void createFolder (File originalFile) throws IOException {
+		if (!originalFile.isDirectory())
 			return;
-		newFilePath(orignalFile).mkdirs();
-		for (File innerFile : orignalFile.listFiles()) {
+		newFilePath(originalFile).mkdirs();
+		for (File innerFile : originalFile.listFiles()) {
 			if (innerFile.isFile()){
 				if (innerFile.getName().endsWith(".groovy"))
 					parseFile(innerFile, new GroovyStrategy());
@@ -81,30 +84,47 @@ public class RgmsPreprocessor {
 		
 	}
 	
-	public void parseFile (File orignalFile, ParseStrategy strategy) throws IOException {
-		if (!existFile(orignalFile))
+	public void parseFile (File originalFile, ParseStrategy strategy) throws IOException {
+		if (!existFile(originalFile))
 			return;
-		File newFile = newFilePath(orignalFile);
+		File newFile = newFilePath(originalFile);
 		newFile.createNewFile();
-		
-		BufferedReader br = new BufferedReader(new FileReader(orignalFile));
-		BufferedWriter bw = new BufferedWriter(new FileWriter(newFile));
-		String line;
-		while ((line = br.readLine()) != null) {
-			line = strategy.parseLine(line);
-			bw.write(line);
-			bw.newLine();
-		}
-		br.close();
-		bw.close();
+
+        if (isBinary(originalFile)) {
+            newFile.setExecutable(true);
+            copyFileUsingStream(originalFile,newFile);
+        } else {
+            processFile(originalFile, strategy, newFile);
+        }
 	}
 
-	private File newFilePath(File orignalFile) {
-		//String deltaPath = orignalFile.getAbsolutePath().replaceFirst(rgmsOriginPath, "");
-		String deltaPath = rgmsRoot.toURI().relativize(orignalFile.toURI()).getPath();
-		deltaPath = deltaPath.replaceAll("-", "");
-		deltaPath = deltaPath.replaceAll("_", "");
-		File newFile = new File (newRgms.toURI().getPath()+File.separator+ deltaPath);
+    private boolean isBinary(File originalFile) {
+       String name = originalFile.getName();
+       return name.endsWith(".exe") || name.endsWith(".out") || name.endsWith(".png");
+    }
+
+    private void processFile(File originalFile, ParseStrategy strategy, File newFile) throws IOException {
+        BufferedReader br = new BufferedReader(new FileReader(originalFile));
+        BufferedWriter bw = new BufferedWriter(new FileWriter(newFile));
+
+        String line;
+        while ((line = br.readLine()) != null) {
+            line = strategy.parseLine(line);
+            bw.write(line);
+            bw.newLine();
+        }
+        br.close();
+        bw.close();
+    }
+
+    private File newFilePath(File originalFile) {
+		//String deltaPath = originalFile.getAbsolutePath().replaceFirst(rgmsOriginPath, "");
+		String deltaPath = rgmsRoot.toURI().relativize(originalFile.toURI()).getPath();
+		if (!deltaPath.contains(".rng")) {
+            deltaPath = deltaPath.replaceAll("-", "");
+		    deltaPath = deltaPath.replaceAll("_", "");
+        }
+        File newFile = new File (newRgms.toURI().getPath()+File.separator+ deltaPath);
 		return newFile;
 	}
 	
@@ -116,4 +136,21 @@ public class RgmsPreprocessor {
 		return true;
 	}
 
+    // From http://www.journaldev.com/861/4-ways-to-copy-file-in-java
+    private static void copyFileUsingStream(File source, File dest) throws IOException {
+        InputStream is = null;
+        OutputStream os = null;
+        try {
+            is = new FileInputStream(source);
+            os = new FileOutputStream(dest);
+            byte[] buffer = new byte[1024];
+            int length;
+            while ((length = is.read(buffer)) > 0) {
+                os.write(buffer, 0, length);
+            }
+        } finally {
+            is.close();
+            os.close();
+        }
+    }
 }
